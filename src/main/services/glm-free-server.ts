@@ -1,4 +1,4 @@
-import { exec, ChildProcess } from 'child_process'
+import { spawn, ChildProcess } from 'child_process'
 import axios from 'axios'
 import path from 'path'
 import fs from 'fs'
@@ -22,30 +22,40 @@ export class GLMFreeServer {
 
   constructor() {
     this.port = 3000
-    
-    // 根据平台选择可执行文件路径
+
+    // 根据平台选择可执行文件名
     const platform = process.platform
     const arch = process.arch
-    
+    let binName: string
     if (platform === 'win32') {
-      this.executablePath = path.join(__dirname, '../../bin/glm-free-api.exe')
+      binName = 'glm-free-api.exe'
     } else if (platform === 'darwin') {
-      this.executablePath = path.join(__dirname, `../../bin/glm-free-api-${arch}`)
+      binName = `glm-free-api-mac-${arch}`
     } else {
-      this.executablePath = path.join(__dirname, '../../bin/glm-free-api-linux')
+      binName = 'glm-free-api-linux'
     }
 
-    // 如果文件不存在，提示用户手动放置
-    if (!fs.existsSync(this.executablePath)) {
-      console.warn(`⚠️ 未找到 GLM-Free-API 二进制文件：${this.executablePath}`)
+    // 打包后二进制位于 resources/bin（asar 外），开发时位于项目 bin/ 目录
+    const candidates: string[] = []
+    if (process.resourcesPath) {
+      candidates.push(path.join(process.resourcesPath, 'bin', binName))
+    }
+    candidates.push(path.join(__dirname, '../../bin', binName))
+
+    const found = candidates.find(p => fs.existsSync(p))
+
+    if (!found) {
+      console.warn(`⚠️ 未找到 GLM-Free-API 二进制文件，已尝试：\n${candidates.join('\n')}`)
       console.warn('请手动编译并放置到 bin/ 目录')
-      
+
       // 开发模式下使用全局安装的 glm-free-api
       if (process.env.NODE_ENV === 'development') {
         this.executablePath = 'glm-free-api'
       } else {
         throw new Error('GLM-Free-API 二进制文件未找到')
       }
+    } else {
+      this.executablePath = found
     }
 
     this.stats = {
@@ -60,15 +70,19 @@ export class GLMFreeServer {
     return new Promise((resolve, reject) => {
       console.log(`🚀 启动 GLM-Free-API: ${this.executablePath}`)
       
-      const args = [
-        '--provider=zai',
-        `--port=${this.port}`,
-        '--agent-mode=true',
-        '--max-concurrent=3',
-        '--token-refresh=3600'
-      ]
+      // 二进制实际支持的 flag（见 --help）：-agent-mode、-sync-mode、-verbose、-db-path 等
+      // 端口通过 PORT 环境变量控制
+      const args = ['-agent-mode']
 
-      this.process = exec(`${this.executablePath} ${args.join(' ')}`)
+      // 使用 spawn 数组参数，避免路径含空格时的 shell 转义问题
+      this.process = spawn(this.executablePath, args, {
+        windowsHide: true,
+        env: { ...process.env, PORT: String(this.port), HOST: '127.0.0.1' }
+      })
+
+      this.process.on('exit', (code) => {
+        console.error(`[GLM-Free-API] 进程退出，code=${code}（若为非 0，请检查 tokens.sqlite 是否已由 token-collector 生成）`)
+      })
 
       if (this.process.stdout) {
         this.process.stdout.on('data', (data) => {

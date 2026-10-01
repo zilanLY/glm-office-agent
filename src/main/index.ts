@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, tray, Menu, nativeImage } from 'electron'
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } from 'electron'
 import path from 'path'
 import { GLMFreeServer } from './services/glm-free-server'
 import { ToolRegistry } from './tools/tool-registry'
@@ -6,19 +6,25 @@ import { ToolRegistry } from './tools/tool-registry'
 let mainWindow: BrowserWindow | null = null
 let glmServer: GLMFreeServer | null = null
 let toolRegistry: ToolRegistry | null = null
+let trayInstance: Tray | null = null
 
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
       contextIsolation: true,
     },
   })
 
-  mainWindow.loadURL('http://localhost:5173')
+  // 开发环境加载 Vite Dev Server，生产环境加载构建产物
+  if (process.env['ELECTRON_RENDERER_URL']) {
+    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
+  }
 
   if (process.env.NODE_ENV === 'development') {
     mainWindow.webContents.openDevTools()
@@ -29,16 +35,23 @@ function createWindow() {
   })
 }
 
+function resolveIconPath(): string {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'icon.png')
+  }
+  return path.join(app.getAppPath(), 'build/icon.png')
+}
+
 async function startGLMService() {
   try {
     glmServer = new GLMFreeServer()
     await glmServer.start()
     console.log('✅ GLM-Free-API started successfully')
-    
+
     // 注册系统工具
     toolRegistry = new ToolRegistry()
     await toolRegistry.initialize(glmServer)
-    
+
     // 发送状态到前端
     mainWindow?.webContents.send('glm-status-changed', {
       status: 'running',
@@ -76,8 +89,8 @@ ipcMain.handle('get-request-stats', async () => {
 
 app.whenReady().then(async () => {
   // 创建系统托盘
-  const icon = nativeImage.createFromPath(path.join(__dirname, '../build/icon.ico'))
-  const trayInstance = new Tray(icon)
+  const icon = nativeImage.createFromPath(resolveIconPath())
+  trayInstance = new Tray(icon)
   const contextMenu = Menu.buildFromTemplate([
     { label: '显示窗口', click: () => mainWindow?.show() },
     { label: '退出', click: () => app.exit() }
@@ -85,11 +98,9 @@ app.whenReady().then(async () => {
   trayInstance.setToolTip('GLM Office Agent')
   trayInstance.setContextMenu(contextMenu)
 
-  // 启动 GLM 服务
-  await startGLMService()
-
-  // 创建主窗口
+  // 窗口先开，GLM 服务异步启动（服务失败不应阻塞 UI）
   createWindow()
+  startGLMService()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -107,4 +118,5 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   glmServer?.stop()
+  trayInstance?.destroy()
 })

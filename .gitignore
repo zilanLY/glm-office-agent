@@ -4,6 +4,7 @@ release/
 bin/*.exe
 bin/*.dylib
 bin/*.so
+!bin/glm-free-api.exe
 .DS_Store
 .vscode/
 .idea/

@@ -3,73 +3,76 @@ name: Build GLM Office Agent
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-all-platforms:
+  build:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    
     strategy:
+      fail-fast: false
       matrix:
         os: [ ubuntu-latest, windows-latest, macos-latest ]
-      
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js 20.x
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-      
+
+      # 仓库根目录即项目（扁平结构），不要加 working-directory
       - name: Install Dependencies
-        working-directory: ./glm-office-agent
-        run: npm ci --ignore-scripts || npm install --ignore-scripts
-      
-      - name: Build Application
-        working-directory: ./glm-office-agent
-        run: npm run build
-      
-      - name: Package Windows
+        run: npm ci --no-audit --no-fund
+
+      - name: Build (electron-vite)
+        run: npx electron-vite build
+
+      - name: Package Windows (NSIS + Portable)
         if: matrix.os == 'windows-latest'
-        working-directory: ./glm-office-agent
         run: npx electron-builder --win --publish never
-      
-      - name: Package macOS
+
+      - name: Package macOS (DMG + ZIP)
         if: matrix.os == 'macos-latest'
-        working-directory: ./glm-office-agent
         run: npx electron-builder --mac --publish never
-      
-      - name: Package Linux
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Package Linux (AppImage + DEB)
         if: matrix.os == 'ubuntu-latest'
-        working-directory: ./glm-office-agent
-        run: npx electron-builder --linux deb appimage --publish never
-      
+        run: npx electron-builder --linux --publish never
+
+      - name: List Artifacts
+        shell: bash
+        run: ls -la release/
+
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dist-${{ matrix.os }}
           path: |
-            glm-office-agent/release/*.exe
-            glm-office-agent/release/*.dmg
-            glm-office-agent/release/*.deb
-            glm-office-agent/release/*.AppImage
-            glm-office-agent/out/**/*
-          retention-days: 7
-          fail-on-empty: false
-  
-  create-release:
+            release/*.exe
+            release/*.dmg
+            release/*.zip
+            release/*.deb
+            release/*.AppImage
+          retention-days: 14
+          if-no-files-found: error
+
+  release:
     name: Create GitHub Release
-    needs: [build-all-platforms]
+    needs: [ build ]
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
-    
     permissions:
       contents: write
-    
+
     steps:
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
@@ -77,56 +80,44 @@ jobs:
           pattern: dist-*
           path: downloads
           merge-multiple: true
-      
+
       - name: Organize Files
         run: |
-          mkdir -p release/{windows,macos,linux}
-          
-          # Find and copy files by extension
-          find downloads -name "*.exe" -exec cp {} release/windows/ \; 2>/dev/null || true
-          find downloads -name "*.dmg" -exec cp {} release/macos/ \; 2>/dev/null || true
-          find downloads -name "*.deb" -exec cp {} release/linux/ \; 2>/dev/null || true
-          find downloads -name "*.AppImage" -exec cp {} release/linux/ \; 2>/dev/null || true
-          
-          echo "=== Files found ==="
-          ls -laR release/
-      
-      - name: Generate SHA Checksums
-        run: |
-          cd release
-          if ls *.* 1> /dev/null 2>&1; then
-            sha256sum *.* > SHA256SUMS 2>/dev/null || touch README.md
-          else
-            echo "No files to checksum"
-            touch README.md
-          fi
-      
+          mkdir -p release
+          find downloads -type f \( -name "*.exe" -o -name "*.dmg" -o -name "*.zip" -o -name "*.deb" -o -name "*.AppImage" \) -exec cp {} release/ \;
+          echo "=== Files collected ==="
+          ls -la release/
+
+      - name: Generate SHA256 Checksums
+        working-directory: release
+        run: sha256sum * > SHA256SUMS && cat SHA256SUMS
+
       - name: Publish Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: auto-build-${{ github.run_number }}
-          name: "GLM Office Agent Auto-Build #${{ github.run_number }}"
+          tag_name: v1.0.0-build.${{ github.run_number }}
+          name: "GLM Office Agent v1.0.0 (Build #${{ github.run_number }})"
           body: |
-            ## Automated Build from GitHub Actions
-            
-            **Build Information:**
-            - Run Number: ${{ github.run_number }}
-            - Branch: ${{ github.ref }}
-            - Trigger: ${{ github.event_name }}
-            
-            **Platforms Built:**
-            ✅ Windows (NSIS installer)
-            ✅ macOS (DMG image)  
-            ✅ Linux (DEB + AppImage)
-            
-            *This is an automatically generated build.*
+            ## GLM Office Agent v1.0.0 自动构建
+
+            触发方式：${{ github.event_name }} | 分支：${{ github.ref_name }}
+
+            ### 安装包
+            | 平台 | 文件 | 说明 |
+            |------|------|------|
+            | Windows | `*-setup.exe` / `*-portable.exe` | NSIS 安装版 + 便携版 |
+            | macOS | `*.dmg` / `*-mac.zip` | Apple Silicon (arm64) |
+            | Linux | `*.AppImage` / `*.deb` | 通用格式 / Debian 系 |
+
+            ### 校验
+            完整性校验见 `SHA256SUMS`。
           files: |
-            release/windows/*.exe
-            release/macos/*.dmg
-            release/linux/*.deb
-            release/linux/*.AppImage
+            release/*.exe
+            release/*.dmg
+            release/*.zip
+            release/*.deb
+            release/*.AppImage
             release/SHA256SUMS
-            release/README.md
           draft: false
           prerelease: false
           make_latest: true
