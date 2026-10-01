@@ -96,9 +96,12 @@ jobs:
       - name: Rename APKs
         working-directory: apk
         run: |
-          mv app-debug.apk "GLM-Office-Agent-1.0.0-debug.apk" 2>/dev/null || true
-          mv app-release.apk "GLM-Office-Agent-1.0.0-release-signed.apk" 2>/dev/null || true
-          ls -la
+          # download-artifact 保留 debug/、release/ 子目录，递归查找再平铺
+          find . -name "app-debug.apk" -exec mv {} ./GLM-Office-Agent-1.0.0-debug.apk \;
+          find . -name "app-release.apk" -exec mv {} ./GLM-Office-Agent-1.0.0-release-signed.apk \;
+          echo "=== APK files ==="
+          find . -name "*.apk" -ls
+          [ -f GLM-Office-Agent-1.0.0-release-signed.apk ] || { echo "release APK missing!"; exit 1; }
 
       - name: Publish Release
         uses: softprops/action-gh-release@v2
@@ -119,8 +122,8 @@ jobs:
 
             > 注意：Android 端为 WebView 壳应用，本地 GLM-Free-API 后端（Go 二进制）不随 APK 分发；
             > 服务能力依赖 Web 端降级模式，完整桌面能力请使用 Windows/macOS/Linux 版本。
-          files: |
-            apk/*.apk
+          files: apk/*.apk
+          fail_on_unmatched_files: true
           draft: false
           prerelease: false
           make_latest: false
