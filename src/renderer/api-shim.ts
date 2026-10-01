@@ -94,6 +94,16 @@ if (typeof window !== 'undefined' && !(window as any).electronAPI) {
 
   // 供后续 chat UI 直接使用
   w.glmChat = chat
+
+  // Android Capacitor 环境：暴露原生能力（采集 device token、服务状态）
+  const cap = (window as any).Capacitor
+  if (cap?.isNativePlatform?.()) {
+    const plugin = cap.Plugins?.GlmHarvest
+    if (plugin) {
+      w.glmHarvest = () => plugin.openHarvest()
+      w.glmServerStatus = () => plugin.status()
+    }
+  }
 }
 
 export {}

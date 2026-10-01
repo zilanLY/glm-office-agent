@@ -7406,6 +7406,14 @@ if (typeof window !== "undefined" && !window.electronAPI) {
     }
   };
   w2.glmChat = chat;
+  const cap = window.Capacitor;
+  if (cap?.isNativePlatform?.()) {
+    const plugin = cap.Plugins?.GlmHarvest;
+    if (plugin) {
+      w2.glmHarvest = () => plugin.openHarvest();
+      w2.glmServerStatus = () => plugin.status();
+    }
+  }
 }
 client.createRoot(document.getElementById("root")).render(
   /* @__PURE__ */ jsxRuntimeExports.jsx(React.StrictMode, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) })

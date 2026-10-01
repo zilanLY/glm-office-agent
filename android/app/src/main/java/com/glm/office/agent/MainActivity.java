@@ -1,100 +1,44 @@
 package com.glm.office.agent;
 
+import android.Manifest;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
-import android.util.Log;
+import android.widget.Toast;
 import com.getcapacitor.BridgeActivity;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.List;
 
 public class MainActivity extends BridgeActivity {
-    private static final String TAG = "GLM";
-    private static final int PORT = 18080;
-    private Process glmProcess;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(GlmHarvestPlugin.class);
         super.onCreate(savedInstanceState);
-        startGlmService();
+        ensureNotificationPermission();
+        startGlmForegroundService();
     }
 
     /**
-     * 从 nativeLibraryDir 启动内嵌的 GLM-Free-API（Go）。
-     * 二进制以 libglmfreeapi.so 形式打进 APK（Android 仅允许执行
-     * nativeLibraryDir 下 lib 前缀的文件），监听 127.0.0.1:18080。
-     * WebView 内通过 window.electronAPI 的 HTTP shim（api-shim.ts）访问。
+     * Go 服务生命周期交给前台服务管理（保活 + 常驻通知 + 采集入口），
+     * 不再挂在 Activity 上——Activity 被回收不影响服务。
      */
-    private void startGlmService() {
-        try {
-            String binPath = getApplicationInfo().nativeLibraryDir + "/libglmfreeapi.so";
-            if (!new File(binPath).exists()) {
-                Log.e(TAG, "libglmfreeapi.so not found in nativeLibraryDir");
-                return;
-            }
-
-            File dbFile = new File(getFilesDir(), "tokens.sqlite");
-            // 首次启动时从 assets 解出预置的 tokens.sqlite（如有）
-            try (InputStream is = getAssets().open("tokens.sqlite")) {
-                if (!dbFile.exists()) {
-                    try (FileOutputStream fos = new FileOutputStream(dbFile)) {
-                        byte[] buf = new byte[8192];
-                        int n;
-                        while ((n = is.read(buf)) > 0) fos.write(buf, 0, n);
-                    }
-                    Log.i(TAG, "tokens.sqlite copied from assets");
-                }
-            } catch (Exception ignored) {
-                // assets 无预置 db —— 需用户自行放置（adb push 到 filesDir）
-            }
-
-            List<String> args = new ArrayList<>();
-            args.add(binPath);
-            args.add("-agent-mode");
-            if (dbFile.exists()) {
-                args.add("-db-path");
-                args.add(dbFile.getAbsolutePath());
-            }
-
-            ProcessBuilder pb = new ProcessBuilder(args);
-            pb.environment().put("PORT", String.valueOf(PORT));
-            pb.environment().put("HOST", "127.0.0.1");
-            pb.redirectErrorStream(true);
-            glmProcess = pb.start();
-
-            // 转发服务日志到 logcat
-            Thread logPump = new Thread(() -> {
-                try (InputStream in = glmProcess.getInputStream()) {
-                    byte[] buf = new byte[4096];
-                    int n;
-                    StringBuilder line = new StringBuilder();
-                    while ((n = in.read(buf)) > 0) {
-                        line.append(new String(buf, 0, n));
-                        int idx;
-                        while ((idx = line.indexOf("\n")) >= 0) {
-                            Log.i(TAG, line.substring(0, idx));
-                            line.delete(0, idx + 1);
-                        }
-                    }
-                } catch (Exception ignored) {
-                }
-            });
-            logPump.setDaemon(true);
-            logPump.start();
-
-            Log.i(TAG, "GLM-Free-API starting on 127.0.0.1:" + PORT);
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to start GLM-Free-API", e);
+    private void startGlmForegroundService() {
+        Intent i = new Intent(this, GlmServerService.class);
+        i.setAction(GlmServerService.ACTION_START);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(i);
+        } else {
+            startService(i);
         }
     }
 
-    @Override
-    public void onDestroy() {
-        if (glmProcess != null) {
-            glmProcess.destroy();
-            glmProcess = null;
+    private void ensureNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                        != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1001);
+            Toast.makeText(this, "建议允许通知：前台服务保活与采集入口依赖通知栏",
+                    Toast.LENGTH_LONG).show();
         }
-        super.onDestroy();
     }
 }

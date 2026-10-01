@@ -25,6 +25,22 @@
 
         </activity>
 
+        <!-- 应用内 device token 采集器（WebView 驱动 chat.z.ai 的 z_um SDK） -->
+        <activity
+            android:name=".TokenHarvestActivity"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize"
+            android:exported="false" />
+
+        <!-- GLM-Free-API（Go）前台服务：保活本地模型代理进程 -->
+        <service
+            android:name=".GlmServerService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Run embedded GLM-Free-API local model proxy (Go) on 127.0.0.1:18080" />
+        </service>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -39,4 +55,9 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 </manifest>
