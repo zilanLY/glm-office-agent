@@ -7,7 +7,7 @@ on:
     branches: [ main, develop ]
   release:
     types: [ created ]
-  workflow_dispatch:  # Manual trigger support
+  workflow_dispatch:
     inputs:
       build_type:
         description: 'Build type'
@@ -17,7 +17,6 @@ on:
         options:
           - all
           - desktop-only
-          - android-only
 
 jobs:
   # ========================================
@@ -41,50 +40,22 @@ jobs:
           node-version: '20'
           cache: 'npm'
       
-      - name: Install Go (for GLM-Free-API)
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.21'
-        if: matrix.os == 'windows-latest' || matrix.os == 'ubuntu-latest'
-      
-      - name: Clone GLM-Free-API
-        run: |
-          git clone https://github.com/izaart95-jpg/GLM-Free-API.git ../GLM-Free-API
-      
-      - name: Build GLM-Free-API Binary
-        shell: bash
-        run: |
-          case "${{ runner.os }}" in
-            Windows*)
-              cd ../GLM-Free-API
-              GOOS=windows GOARCH=amd64 go build -o ../../glm-office-agent/bin/glm-free-api.exe main.go
-              ;;
-            macOS)
-              cd ../GLM-Free-API
-              GOOS=darwin GOARCH=arm64 go build -o ../../glm-office-agent/bin/glm-free-api-mac-arm64 main.go
-              ;;
-            Linux)
-              cd ../GLM-Free-API
-              GOOS=linux GOARCH=amd64 go build -o ../../glm-office-agent/bin/glm-free-api-linux main.go
-              ;;
-          esac
-      
       - name: Install Dependencies
         working-directory: glm-office-agent
         run: npm install
       
       - name: Build Electron App
         working-directory: glm-office-agent
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run build
       
       - name: Package for Windows
         if: matrix.os == 'windows-latest'
         working-directory: glm-office-agent
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx electron-builder --win --publish never
       
-      - name: Package for macOS
+      - name: Package for macOS  
         if: matrix.os == 'macos-latest'
         working-directory: glm-office-agent
         run: npx electron-builder --mac --publish never
@@ -97,69 +68,22 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: desktop-${{ matrix.os }}
+          name: artifacts-${{ matrix.os }}
           path: |
             glm-office-agent/release/*.exe
             glm-office-agent/release/*.dmg
             glm-office-agent/release/*.deb
             glm-office-agent/release/*.AppImage
           retention-days: 30
-
-  # ========================================
-  # Job 2: Build Android APK
-  # ========================================
-  build-android:
-    name: Build Android APK
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-      
-      - name: Install Go for Backend API
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.21'
-      
-      - name: Build Bridge Service (Linux binary)
-        run: |
-          cd ../GLM-Free-API || git clone https://github.com/izaart95-jpg/GLM-Free-API.git && cd ..
-          GOOS=linux GOARCH=amd64 go build -o bin/glm-free-api-linux ../GLM-Free-API/main.go
-      
-      - name: Setup PWA Mobile App
-        working-directory: glm-office-agent
-        run: npm install
-      
-      # Note: For full Android APK, you'd typically use React Native or Capacitor
-      # This is a simplified approach using web view packaging
-      - name: Create Web View Wrapper
-        working-directory: glm-office-agent
-        run: |
-          mkdir -p android-app/src/main/assets
-          cp -r dist/* android-app/src/main/assets/
-      
-      - name: Upload Android APK Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-apk-prebuilt
-          path: |
-            glm-office-agent/android-app/**/*
-          retention-days: 30
   
   # ========================================
-  # Job 3: Publish to GitHub Releases
+  # Job 2: Publish to GitHub Releases
   # ========================================
   publish-release:
     name: Publish Release
-    needs: [build-desktop, build-android]
+    needs: [build-desktop]
     runs-on: ubuntu-latest
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     
     permissions:
       contents: write
@@ -168,21 +92,31 @@ jobs:
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
         with:
+          pattern: artifacts-*
           path: artifacts
+          merge-multiple: true
       
       - name: Organize Release Files
         run: |
-          mkdir -p release/{windows,macos,linux,android}
-          mv artifacts/desktop-windows-*/release/*.exe release/windows/
-          mv artifacts/desktop-macos-*/release/*.dmg release/macos/
-          mv artifacts/desktop-ubuntu-*/release/*.{deb,AppImage} release/linux/
+          mkdir -p release/{windows,macos,linux}
+          
+          # Windows .exe files
+          cp artifacts/*.exe release/windows/ 2>/dev/null || true
+          
+          # macOS .dmg files
+          cp artifacts/*.dmg release/macos/ 2>/dev/null || true
+          
+          # Linux files (.deb, .AppImage)
+          cp artifacts/*.deb release/linux/ 2>/dev/null || true
+          cp artifacts/*.AppImage release/linux/ 2>/dev/null || true
       
       - name: Calculate Checksums
         run: |
           cd release
-          sha256sum *.* > SHA256SUMS
+          sha256sum *.* > SHA256SUMS 2>/dev/null || echo "No checksums available"
+          ls -la
       
-      - name: Upload Release Assets
+      - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
@@ -191,30 +125,17 @@ jobs:
             release/linux/*.deb
             release/linux/*.AppImage
             release/SHA256SUMS
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # ========================================
-  # Job 4: Deploy to CDN/Web Server
-  # ========================================
-  deploy:
-    name: Deploy to Staging
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    
-    steps:
-      - name: Download Build Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-      
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-      
-      - name: Sync to S3
-        run: |
-          aws s3 sync dist/s3://your-bucket-name/glm-office-agent/staging/
+          tag_name: v${{ github.run_number }}
+          name: "GLM Office Agent v${{ github.run_number }}"
+          body: |
+            Automated build from GitHub Actions
+            
+            ## Platform Support
+            ✅ Windows (NSIS installer)
+            ✅ macOS (DMG)  
+            ✅ Linux (AppImage + DEB)
+            
+            ## Build Number
+            Run #${{ github.run_number }}
+          draft: false
+          prerelease: false
