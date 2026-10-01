@@ -7,6 +7,17 @@ on:
     branches: [ main, develop ]
   release:
     types: [ created ]
+  workflow_dispatch:  # Manual trigger support
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - desktop-only
+          - android-only
 
 jobs:
   # ========================================
