@@ -40,18 +40,18 @@ jobs:
           node-version: '20'
           cache: 'npm'
       
-      # Clone GLM-Free-API only if we need the binary
-      - name: Clone GLM-Free-API
+      - name: Clone GLM-Free-API (Windows/Linux only)
         run: |
           cd .. && git clone --depth 1 https://github.com/izaart95-jpg/GLM-Free-API.git
-        
-      - name: Install Go (for GLM-Free-API)
+        if: matrix.os != 'macos-latest'
+      
+      - name: Install Go (for GLM-Free-API on Windows/Linux)
         uses: actions/setup-go@v5
         with:
           go-version: '1.22'
         if: matrix.os != 'macos-latest'
       
-      - name: Build GLM-Free-API Binary
+      - name: Build GLM-Free-API Binary (Windows/Linux)
         shell: bash
         working-directory: ../GLM-Free-API
         env:
@@ -61,15 +61,19 @@ jobs:
             Windows)
               GOOS=windows GOARCH=amd64 go build -trimpath -o ../../glm-office-agent/bin/glm-free-api.exe .
               ;;
-            macOS)
-              # Use pre-built mac binary from local source
-              echo "Using pre-built macOS binary from repository"
-              mkdir -p glm-office-agent/bin
-              ;;
             Linux)
               GOOS=linux GOARCH=amd64 go build -trimpath -o ../../glm-office-agent/bin/glm-free-api-linux .
               ;;
           esac
+        if: matrix.os != 'macos-latest'
+      
+      # Use pre-built macOS binary from repository for now
+      - name: Prepare macOS Binary
+        run: |
+          mkdir -p glm-office-agent/bin
+          echo "Using pre-built macOS binary from repository source"
+          ls -la glm-office-agent/bin/ || true
+        if: matrix.os == 'macos-latest'
       
       - name: Install Dependencies
         working-directory: glm-office-agent
