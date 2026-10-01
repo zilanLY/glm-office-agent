@@ -8,7 +8,7 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
-        versionName "1.0"
+        versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,10 +16,27 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            // CI 通过环境变量注入 keystore（base64），本地构建无这些变量时跳过
+            def ksB64 = System.getenv("GLM_KEYSTORE_B64")
+            if (ksB64) {
+                def ksFile = file("../glm-release.keystore")
+                ksFile.bytes = ksB64.decodeBase64()
+                storeFile ksFile
+                storePassword System.getenv("GLM_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("GLM_KEY_ALIAS")
+                keyPassword System.getenv("GLM_KEYSTORE_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (System.getenv("GLM_KEYSTORE_B64")) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }
