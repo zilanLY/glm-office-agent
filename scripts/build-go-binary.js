@@ -2,6 +2,13 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
+// Skip if running on CI/CD (GitHub Actions, etc.)
+// The actual build will be done by the workflow itself
+if (process.env.CI === 'true') {
+  console.log('⚠️  Skipping GLM-Free-API compilation in CI environment');
+  process.exit(0);
+}
+
 // 确保 bin 目录存在
 const binDir = path.join(__dirname, '..', 'bin');
 if (!fs.existsSync(binDir)) {
