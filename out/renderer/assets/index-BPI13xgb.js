@@ -7327,6 +7327,86 @@ const getStatusIcon = (status) => {
       return "⚪";
   }
 };
+const API_BASE = (() => {
+  try {
+    return localStorage.getItem("glm.apiBase") || "http://127.0.0.1:18080";
+  } catch {
+    return "http://127.0.0.1:18080";
+  }
+})();
+async function chat(messages) {
+  const res = await fetch(`${API_BASE}/v1/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "glm-4.7",
+      messages,
+      stream: false
+    })
+  });
+  if (!res.ok) {
+    throw new Error(`GLM API ${res.status}：${await res.text().catch(() => "")}`);
+  }
+  const data = await res.json();
+  return data.choices?.[0]?.message;
+}
+if (typeof window !== "undefined" && !window.electronAPI) {
+  const w2 = window;
+  w2.electronAPI = {
+    // 工具列表：shim 环境提供一个"直接对话"工具
+    getToolList: async () => [
+      {
+        name: "chat",
+        description: "GLM 对话（输入 message 字段，直连本地 GLM-Free-API）",
+        parameters: {
+          type: "object",
+          properties: { message: { type: "string", description: "要发送给模型的消息" } },
+          required: ["message"]
+        }
+      }
+    ],
+    addTool: async (tool) => tool,
+    removeTool: async (_name) => true,
+    testToolCall: async (args) => {
+      if (args?.name === "chat") {
+        const message = args?.args?.message ?? JSON.stringify(args?.args ?? {});
+        return chat([{ role: "user", content: String(message) }]);
+      }
+      throw new Error(`工具 ${args?.name} 在当前环境不可用（仅桌面版支持本地系统工具）`);
+    },
+    onGLMStatusChanged: (callback) => {
+      const poll = async () => {
+        try {
+          const r2 = await fetch(`${API_BASE}/health`);
+          if (r2.ok) {
+            callback({ status: "running", message: "GLM-Free-API 已就绪（本地服务）" });
+          } else {
+            callback({
+              status: "error",
+              message: `本地服务已启动但未就绪 (HTTP ${r2.status})：请确认 tokens.sqlite 含有效 token`
+            });
+          }
+        } catch {
+          callback({
+            status: "error",
+            message: "本地 GLM-Free-API 未运行（服务启动失败或缺少 tokens.sqlite）"
+          });
+        }
+      };
+      poll();
+      setInterval(poll, 5e3);
+    },
+    getRequestStats: async () => {
+      try {
+        const r2 = await fetch(`${API_BASE}/admin/stats`);
+        if (r2.ok) return await r2.json();
+      } catch {
+      }
+      return {};
+    }
+  };
+  w2.glmChat = chat;
+}
 client.createRoot(document.getElementById("root")).render(
   /* @__PURE__ */ jsxRuntimeExports.jsx(React.StrictMode, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) })
 );

@@ -10,3 +10,4 @@ bin/*.so
 .idea/
 *.log
 npm-debug.log*
+android/app/src/main/jniLibs/

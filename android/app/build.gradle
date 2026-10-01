@@ -3,6 +3,12 @@ apply plugin: 'com.android.application'
 android {
     namespace = "com.glm.office.agent"
     compileSdk = rootProject.ext.compileSdkVersion
+    // 内嵌 Go 服务二进制（libglmfreeapi.so）需解压到 nativeLibraryDir 才能被 ProcessBuilder 执行
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
     defaultConfig {
         applicationId "com.glm.office.agent"
         minSdkVersion rootProject.ext.minSdkVersion
