@@ -1,0 +1,11 @@
+node_modules/
+dist/
+release/
+bin/*.exe
+bin/*.dylib
+bin/*.so
+.DS_Store
+.vscode/
+.idea/
+*.log
+npm-debug.log*

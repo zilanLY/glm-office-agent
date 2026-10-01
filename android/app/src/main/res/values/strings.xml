@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">GLM Office Agent</string>
+    <string name="title_activity_main">GLM Office Agent</string>
+    <string name="package_name">com.glm.office.agent</string>
+    <string name="custom_url_scheme">com.glm.office.agent</string>
+</resources>

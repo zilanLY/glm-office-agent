@@ -1,0 +1,101 @@
+{
+  "name": "glm-office-agent",
+  "version": "1.0.0",
+  "description": "免登录 GLM 桌面办公智能体 - 基于 GLM-Free-API + Electron",
+  "author": "GLM Office Team <team@glm-office.ai>",
+  "homepage": "https://github.com/your-repo/glm-office-agent",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "postinstall": "node scripts/build-go-binary.js",
+    "package": "electron-builder",
+    "build:win": "electron-vite build && electron-builder --win --publish never",
+    "build:mac": "electron-vite build && electron-builder --mac --publish never",
+    "build:linux": "electron-vite build && electron-builder --linux --publish never",
+    "start": "electron .",
+    "preview": "electron-vite preview"
+  },
+  "build": {
+    "appId": "com.glm.office.agent",
+    "productName": "GLM Office Agent",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "extraFiles": [
+      {
+        "from": "bin/glm-free-api-linux",
+        "to": "bin/glm-free-api-linux"
+      },
+      {
+        "from": "bin/glm-free-api.exe",
+        "to": "bin/glm-free-api.exe"
+      },
+      {
+        "from": "bin/glm-free-api-mac-arm64",
+        "to": "bin/glm-free-api-mac-arm64"
+      }
+    ],
+    "extraResources": [
+      {
+        "from": "bin/*",
+        "to": "bin"
+      }
+    ],
+    "files": [
+      "out/**/*",
+      "bin/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "build/icon.icns"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "build/icon.png",
+      "category": "Utility",
+      "maintainer": "GLM Office Team <team@glm-office.ai>"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "axios": "^1.6.2",
+    "electron-store": "^8.1.0",
+    "express": "^4.18.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^8.0.1",
+    "@types/node": "^20.10.5",
+    "@types/react": "^18.2.45",
+    "@types/react-dom": "^18.2.18",
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^8.2.2",
+    "electron": "^28.1.0",
+    "electron-builder": "^24.13.3",
+    "electron-vite": "^2.0.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.11"
+  }
+}
